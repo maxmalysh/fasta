@@ -1,32 +1,16 @@
 from collections import namedtuple
-import traceback
 from pyfasta import Fasta
-from fasta import align, smatrix, get_performance
+import traceback
 import progressbar
 
+from fasta import align, smatrix, get_performance
+from utils import outline_alignment_for
 
 library_path = 'lib.fasta'
 query_path = 'Query.txt'
 library_process_limit = None
 
 AlignmentResult = namedtuple('Result', ['title', 'score'])
-
-'''
-# Creates alignment outline
-'''
-def outline_alignment_for(aligned1, aligned2):
-    alignment = ''
-
-    for i in range(len(aligned1)):
-        if aligned1[i] == aligned2[i]:
-            alignment += '|'
-        else:
-            if aligned1[i] == '-' or aligned2[i] == '-':
-                alignment += ' '
-            else:
-                alignment += '.'
-
-    return alignment
 
 
 '''

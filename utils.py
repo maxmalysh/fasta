@@ -15,3 +15,19 @@ def diagonal_generator(rows, cols):
                 if i + j - sum == 0:
                     yield i, j
 
+'''
+# Creates alignment outline
+'''
+def outline_alignment_for(aligned1, aligned2):
+    alignment = ''
+
+    for i in range(len(aligned1)):
+        if aligned1[i] == aligned2[i]:
+            alignment += '|'
+        else:
+            if aligned1[i] == '-' or aligned2[i] == '-':
+                alignment += ' '
+            else:
+                alignment += '.'
+
+    return alignment
