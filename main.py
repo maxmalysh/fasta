@@ -1,13 +1,13 @@
 from collections import namedtuple
 import traceback
 from pyfasta import Fasta
-from fasta import align, smatrix
+from fasta import align, smatrix, get_performance
 import progressbar
 
 
 library_path = 'lib.fasta'
 query_path = 'Query.txt'
-library_process_limit =  None #100
+library_process_limit = None
 
 AlignmentResult = namedtuple('Result', ['title', 'score'])
 
@@ -60,7 +60,7 @@ def process_query():
     print("Done")
     print("Etalone score is %d" % etalone_score)
     print("Got %d results, here are top-30 among them:" % len(results))
-    print("Score  | Match  | Record")
+    print("Score  | Match   | Record")
 
     for sequence in sorted(results, key=lambda x: x.score, reverse=True)[:30]:
         match = (sequence.score / etalone_score) * 100.0
@@ -86,7 +86,8 @@ def test_rattus():
 
     #query_sequence = str(queries["Rattus"])
     #query_sequence = str(library["sp|P06757|ADH1_RAT Alcohol dehydrogenase 1 OS=Rattus norvegicus GN=Adh1 PE=1 SV=3"])
-    query_sequence = str(library["tr|G0Z9N0|G0Z9N0_MALDO Alcohol dehydrogenase (Fragment) OS=Malus domestica GN=Adh1-1 PE=4 SV=1"])
+    #query_sequence = str(library["tr|G0Z9N0|G0Z9N0_MALDO Alcohol dehydrogenase (Fragment) OS=Malus domestica GN=Adh1-1 PE=4 SV=1"])
+    query_sequence = str(library["tr|A0A0J6Z9N4|A0A0J6Z9N4_9MYCO Alcohol dehydrogenase OS=Mycobacterium obuense GN=adh_1 PE=4 SV=1"])
     library_sequence = str(library["tr|Q8K571|Q8K571_RAT ADH-like protein OS=Rattus norvegicus GN=Adh1 PE=2 SV=1"])
 
     aligned1, aligned2, score = align(library_sequence, query_sequence)
@@ -102,9 +103,10 @@ def test_rattus():
 
 
 def main():
-    #process_query()
+    process_query()
+    print(get_performance())
     #test_simple()
-    test_rattus()
+    #test_rattus()
 
 if __name__ == "__main__":
     main()

@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from Bio.SubsMat import MatrixInfo
 from enum import Enum
-
+import time
 
 '''
 # Some helpful articles
@@ -13,12 +13,14 @@ from enum import Enum
 # http://ab.inf.uni-tuebingen.de/teaching/ws06/albi1/script/BLAST_slides.pdf
 # http://www.ch.embnet.org/CoursEMBnet/Basel03/slides/BLAST_FASTA.pdf great images
 # http://vlab.amrita.edu/?sub=3&brch=274&sim=1434&cnt=1
+# http://www.cs.tau.ac.il/~rshamir/algmb/01/scribe03/lec03.pdf – best description on how to MERGE regions
+#
 '''
 
 smatrix = MatrixInfo.pam250
 ktup = 2
 best_diagonal_number = 10
-band_width = 5
+band_width = 8
 gap_penalty = -4
 
 
@@ -60,16 +62,21 @@ class Region:
 # 'l' -> [2, 3, 8]
 # 'h' -> [0], etc
 '''
-def create_lookup_table_for(seq):
-    lookup_table = dict()
+static_lookup_table = None
 
-    for char in seq:
-        lookup_table[char] = []
+def get_lookup_table_for(seq):
+    global static_lookup_table
+    if static_lookup_table is None:
+        static_lookup_table = dict()
 
-    for i in range(len(seq)):
-        lookup_table[seq[i]].append(i)
+        for char in seq:
+            static_lookup_table[char] = []
 
-    return lookup_table
+        for i in range(len(seq)):
+            static_lookup_table[seq[i]].append(i)
+
+    return static_lookup_table
+
 
 '''
 # Returns all side diagonals for any numpy matrix.
@@ -89,6 +96,13 @@ def diagonal_generator(rows, cols):
                     yield i, j
 
 
+dotplot_time = 0
+region_time = 0
+align_time = 0
+
+def get_performance():
+    return dotplot_time, region_time, align_time
+
 '''
 # 1. Identify common words between seq1 and seq2
 # 2. Score diagonals with k-word matches, identify 10 best diagonals
@@ -97,26 +111,30 @@ def diagonal_generator(rows, cols):
 # 5. Perform dynamic programming to find final alignments
 '''
 def align(db_seq, query_seq):
+    global dotplot_time, region_time, align_time
+
     n, m = len(db_seq), len(query_seq)
 
     # Create a lookup table
-    seq2_lookup_table = create_lookup_table_for(query_seq)
+    query_lookup_table = get_lookup_table_for(query_seq)
 
     # Build a dot plot
+    t1 = time.perf_counter()
     dot_plot = np.zeros(shape=(n, m), dtype=np.int)
     for i in range(n):
         if db_seq[i] not in query_seq:
             continue
         for j in range(m):
-            if j in seq2_lookup_table[db_seq[i]]:
+            if j in query_lookup_table[db_seq[i]]:
                 dot_plot[i,j] = 1
 
-    # print(dot_plot)
+    dotplot_time += time.perf_counter() - t1
 
     #
     # Finding diagonal regions
     # (all diagonal subsequences with length equal to or greater than ktup)
     #
+    t1 = time.perf_counter()
     regions = []
 
     for k in range(-n + 1, m):
@@ -139,6 +157,7 @@ def align(db_seq, query_seq):
 
         if inside and length >= ktup:
             regions.append(Region(x_start, y_start, length))
+    region_time += time.perf_counter() - t1
 
     #
     # Calculate score for each region using similarity matrix
@@ -171,7 +190,10 @@ def align(db_seq, query_seq):
     #
 
     # Perform dynamic programming for survivors
+    t1 = time.perf_counter()
     a_query, a_sequence, max_score = BoundedSmithWaterman(regions, db_seq, query_seq)
+    align_time += time.perf_counter() - t1
+
     return a_sequence, a_query, max_score
 
 
@@ -183,12 +205,12 @@ class Direction(Enum):
 
 def BoundedSmithWaterman(regions, seq1, seq2):
     n, m = len(seq1), len(seq2)
-
+    '''
     # Find bounds first
     i_min = min(regions, key=lambda reg: reg.x).x
     j_min = min(regions, key=lambda reg: reg.y).y
-    i_max = max(regions, key=lambda reg: (reg.x + reg.length)).x2
-    j_max = max(regions, key=lambda reg: (reg.y + reg.length)).y2
+    i_max = max(regions, key=lambda reg: reg.x2).x2
+    j_max = max(regions, key=lambda reg: reg.y2).y2
 
     i_min = max(i_min - band_width, 1)
     i_max = min(i_max + band_width, n)
@@ -197,6 +219,16 @@ def BoundedSmithWaterman(regions, seq1, seq2):
 
     left_diag = min(regions, key=lambda reg: reg.diag).diag - band_width
     right_diag = max(regions, key=lambda reg: reg.diag).diag + band_width
+    '''
+    region = regions[0]
+
+    i_min = max(1, region.x  - band_width)
+    i_max = min(n, region.x2 + band_width)
+    j_min = max(1, region.y  - band_width)
+    j_max = min(m, region.y2 + band_width)
+
+    left_diag  = region.diag - band_width
+    right_diag = region.diag + band_width
 
     # Now initialize score and traceback matrices
     max_score = 0
@@ -210,7 +242,7 @@ def BoundedSmithWaterman(regions, seq1, seq2):
             # t - current diagonal number
             # checking whether we're inside bounds
             current_diag = i - j
-            if not (current_diag >= left_diag and current_diag <= right_diag):
+            if not (current_diag > left_diag and current_diag < right_diag):
                 continue
 
             pair = (seq2[j], seq1[i])
