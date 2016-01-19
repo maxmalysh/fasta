@@ -62,39 +62,17 @@ class Region:
 # 'l' -> [2, 3, 8]
 # 'h' -> [0], etc
 '''
-static_lookup_table = None
 
 def get_lookup_table_for(seq):
-    global static_lookup_table
-    if static_lookup_table is None:
-        static_lookup_table = dict()
+    lookup_table = {}
 
-        for char in seq:
-            static_lookup_table[char] = []
+    for char in seq:
+        lookup_table[char] = []
 
-        for i in range(len(seq)):
-            static_lookup_table[seq[i]].append(i)
+    for i in range(len(seq)):
+        lookup_table[seq[i]].append(i)
 
-    return static_lookup_table
-
-
-'''
-# Returns all side diagonals for any numpy matrix.
-# (from upper top to the left lower corner of the matrix)
-'''
-def get_all_diagonals_for(matrix):
-    return [
-       matrix.diagonal(i) for i in range(matrix.shape[1]-1,-matrix.shape[0],-1)
-    ]
-
-def diagonal_generator(rows, cols):
-    max_sum = rows + cols - 1
-    for sum in range(max_sum):
-        for i in range(0, rows):
-            for j in range(0, cols):
-                if i + j - sum == 0:
-                    yield i, j
-
+    return lookup_table
 
 dotplot_time = 0
 region_time = 0
@@ -116,17 +94,17 @@ def align(db_seq, query_seq):
     n, m = len(db_seq), len(query_seq)
 
     # Create a lookup table
-    query_lookup_table = get_lookup_table_for(query_seq)
+    db_lookup_table = get_lookup_table_for(db_seq)
 
     # Build a dot plot
     t1 = time.perf_counter()
-    dot_plot = np.zeros(shape=(n, m), dtype=np.int)
-    for i in range(n):
-        if db_seq[i] not in query_seq:
-            continue
-        for j in range(m):
-            if j in query_lookup_table[db_seq[i]]:
-                dot_plot[i,j] = 1
+
+    dot_plot = np.zeros(shape=(n,m), dtype=np.int)
+    for j in range(m):
+        char = query_seq[j]
+        if char in db_lookup_table:
+            for i in db_lookup_table[char]:
+                dot_plot[i, j] = 1
 
     dotplot_time += time.perf_counter() - t1
 
@@ -157,6 +135,7 @@ def align(db_seq, query_seq):
 
         if inside and length >= ktup:
             regions.append(Region(x_start, y_start, length))
+
     region_time += time.perf_counter() - t1
 
     #
@@ -191,10 +170,14 @@ def align(db_seq, query_seq):
 
     # Perform dynamic programming for survivors
     t1 = time.perf_counter()
-    a_query, a_sequence, max_score = BoundedSmithWaterman(regions, db_seq, query_seq)
+    if len(regions) != 0:
+        best_region = regions[0]
+        db_aligned, query_aligned, max_score = BoundedSmithWaterman(regions[:3], db_seq, query_seq)
+    else:
+        db_aligned, query_aligned, max_score = '', '', 0
     align_time += time.perf_counter() - t1
 
-    return a_sequence, a_query, max_score
+    return db_aligned, query_aligned, max_score
 
 
 class Direction(Enum):
@@ -205,7 +188,7 @@ class Direction(Enum):
 
 def BoundedSmithWaterman(regions, seq1, seq2):
     n, m = len(seq1), len(seq2)
-    '''
+
     # Find bounds first
     i_min = min(regions, key=lambda reg: reg.x).x
     j_min = min(regions, key=lambda reg: reg.y).y
@@ -219,16 +202,15 @@ def BoundedSmithWaterman(regions, seq1, seq2):
 
     left_diag = min(regions, key=lambda reg: reg.diag).diag - band_width
     right_diag = max(regions, key=lambda reg: reg.diag).diag + band_width
-    '''
-    region = regions[0]
 
-    i_min = max(1, region.x  - band_width)
-    i_max = min(n, region.x2 + band_width)
-    j_min = max(1, region.y  - band_width)
-    j_max = min(m, region.y2 + band_width)
 
-    left_diag  = region.diag - band_width
-    right_diag = region.diag + band_width
+    # i_min = max(1, region.x  - band_width)
+    # i_max = min(n, region.x2 + band_width)
+    # j_min = max(1, region.y  - band_width)
+    # j_max = min(m, region.y2 + band_width)
+    #
+    # left_diag  = region.diag - band_width
+    # right_diag = region.diag + band_width
 
     # Now initialize score and traceback matrices
     max_score = 0
