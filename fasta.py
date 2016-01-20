@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from Bio.SubsMat import MatrixInfo
 from enum import Enum
 import time
+from utils import SynchronizedTimer
 
 '''
 # Some helpful articles
@@ -22,6 +23,7 @@ ktup = 2
 best_diagonal_number = 10
 band_width = 8
 gap_penalty = -4
+timer = SynchronizedTimer()
 
 def similarity_of(char1, char2):
     if (char1, char2) in smatrix:
@@ -86,12 +88,8 @@ def get_lookup_table_for(seq, ktup):
 
     return lookup_table
 
-dotplot_time = 0
-region_time = 0
-align_time = 0
-
-def get_performance():
-    return dotplot_time, region_time, align_time
+def get_performance_timer():
+    return timer
 
 '''
 # 1. Identify common words between seq1 and seq2
@@ -101,8 +99,6 @@ def get_performance():
 # 5. Perform dynamic programming to find final alignments
 '''
 def align(db_seq, query_seq):
-    global dotplot_time, region_time, align_time
-
     n, m = len(db_seq), len(query_seq)
 
     #
@@ -125,7 +121,7 @@ def align(db_seq, query_seq):
         for j in lookup_table[word]:
             diagonal_sums[i-j] += 1
 
-    dotplot_time += time.perf_counter() - t1
+    timer.add('dotplot', time.perf_counter() - t1)
 
     #
     # Finding diagonal runs
@@ -191,7 +187,7 @@ def align(db_seq, query_seq):
         regions.append(new_region)
 
     regions = [ x for x in regions if x.score > 0 ]
-    region_time += time.perf_counter() - t1
+    timer.add('regions', time.perf_counter() - t1)
 
     #
     # Join regions if this will increase score
@@ -219,7 +215,7 @@ def align(db_seq, query_seq):
     else:
         db_aligned, query_aligned, max_score = '', '', 0
 
-    align_time += time.perf_counter() - t1
+    timer.add('align', time.perf_counter() - t1)
 
     return db_aligned, query_aligned, max_score
 

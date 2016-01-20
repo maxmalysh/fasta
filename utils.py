@@ -2,6 +2,9 @@
 # Returns all side diagonals for any numpy matrix.
 # (from upper top to the left lower corner of the matrix)
 '''
+import threading
+
+
 def get_all_diagonals_for(matrix):
     return [
        matrix.diagonal(i) for i in range(matrix.shape[1]-1,-matrix.shape[0],-1)
@@ -31,3 +34,16 @@ def outline_alignment_for(aligned1, aligned2):
                 alignment += '.'
 
     return alignment
+
+class SynchronizedTimer:
+    def __init__(self):
+        self.dotplot = 0
+        self.regions = 0
+        self.align = 0
+        self.lock = threading.Lock()
+
+    def add(self, key, time):
+        self.lock.acquire()
+        current = getattr(self, key)
+        setattr(self, key, current + time)
+        self.lock.release()

@@ -1,10 +1,12 @@
 from collections import namedtuple
+from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 from pyfasta import Fasta
 import traceback
 import progressbar
 
-from fasta import align, smatrix, get_performance
-from utils import outline_alignment_for
+from fasta import align, smatrix, get_performance_timer
+from utils import outline_alignment_for, SynchronizedTimer
 
 library_path = 'lib.fasta'
 query_path = 'Query.txt'
@@ -13,6 +15,10 @@ library_process_limit = None
 AlignmentResult = namedtuple('Result', ['title', 'score'])
 
 
+class AlignmentTask:
+    def __init__(self, record, future):
+        self.record = record
+        self.future = future
 '''
 # Note that we should explicitly convert pyfasta record to string, as, otherwise,
 # it will never be read into the memory, what will result in poor performance
@@ -25,14 +31,21 @@ def process_query():
     query_sequence = str(queries["Rattus"])
 
     print('Processing')
-    progress = progressbar.ProgressBar()
-    results = []
+    progress = progressbar.ProgressBar(max_value=len(library.keys()))
+    cpu_count = multiprocessing.cpu_count()
+    executor = ThreadPoolExecutor(max_workers=cpu_count)
 
-    for record in progress(list(library.keys())[:library_process_limit]):
+    tasks = []
+    for record in list(library.keys())[:library_process_limit]:
         library_sequence = str(library[record])
-        aligned1, aligned2, score = align(library_sequence, query_sequence)
-        results.append(AlignmentResult(title=record, score=score))
+        future = executor.submit(align, library_sequence, query_sequence)
+        tasks.append(AlignmentTask(record, future))
 
+    results = []
+    for i in range(len(tasks)):
+        _, _, score = tasks[i].future.result()
+        results.append(AlignmentResult(title=tasks[i].record, score=score))
+        progress.update(i)
 
     etalone_score = sum([ smatrix[(x, x)] for x in query_sequence ])
 
@@ -44,6 +57,10 @@ def process_query():
     for sequence in sorted(results, key=lambda x: x.score, reverse=True)[:30]:
         match = (sequence.score / etalone_score) * 100.0
         print("%6d | %5.3f%% | %s" % (sequence.score, match, sequence.title))
+
+    timer = get_performance_timer()
+    for time in [timer.dotplot, timer.regions, timer.align]:
+        print(time / cpu_count)
 
 def test_simple():
     #str1 = "TACCGA"
@@ -93,7 +110,6 @@ def main():
     process_query()
     #test_simple()
     #test_rattus()
-    print(get_performance())
 
 if __name__ == "__main__":
     main()
