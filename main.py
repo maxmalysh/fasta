@@ -29,15 +29,10 @@ def process_query():
     results = []
 
     for record in progress(list(library.keys())[:library_process_limit]):
-        try:
-            library_sequence = str(library[record])
-            aligned1, aligned2, score = align(library_sequence, query_sequence)
-            results.append(AlignmentResult(title=record, score=score))
-        except Exception as e:
-            print(e.__class__, e)
-            traceback.print_tb(e.__traceback__)
-            print("Failed on "+ record)
-            exit()
+        library_sequence = str(library[record])
+        aligned1, aligned2, score = align(library_sequence, query_sequence)
+        results.append(AlignmentResult(title=record, score=score))
+
 
     etalone_score = sum([ smatrix[(x, x)] for x in query_sequence ])
 
@@ -57,6 +52,9 @@ def test_simple():
     str1 = "HEAGAWGHEE"
     str2 = "PAWHEAE"
 
+    str1 = "CCATCGCCATCG"
+    str2 = "GCATCGGC"
+
     aligned1, aligned2, score = align(db_seq=str1, query_seq=str2)
     alignment = outline_alignment_for(aligned1, aligned2)
     print(aligned1)
@@ -68,11 +66,15 @@ def test_rattus():
     library = Fasta(library_path)
     queries = Fasta(query_path)
 
-    #query_sequence = str(queries["Rattus"])
+    query_sequence = str(queries["Rattus"])
     #query_sequence = str(library["sp|P06757|ADH1_RAT Alcohol dehydrogenase 1 OS=Rattus norvegicus GN=Adh1 PE=1 SV=3"])
     #query_sequence = str(library["tr|G0Z9N0|G0Z9N0_MALDO Alcohol dehydrogenase (Fragment) OS=Malus domestica GN=Adh1-1 PE=4 SV=1"])
     #query_sequence = str(library["tr|A0A0J6Z9N4|A0A0J6Z9N4_9MYCO Alcohol dehydrogenase OS=Mycobacterium obuense GN=adh_1 PE=4 SV=1"])
-    query_sequence = str(library["tr|A0A0A9PM57|A0A0A9PM57_ARUDO Adh1 OS=Arundo donax PE=4 SV=1"])
+    #query_sequence = str(library["tr|A0A0A9PM57|A0A0A9PM57_ARUDO Adh1 OS=Arundo donax PE=4 SV=1"])
+    query_sequence = str(library["tr|Q94462|Q94462_DROBU Alcohol dehydrogenase OS=Drosophila buzzatii GN=Adh1 PE=3 SV=1"])
+    #query_sequence = str(library["sp|P48586|ADH1_DROMN Alcohol dehydrogenase 1 OS=Drosophila montana GN=Adh1 PE=3 SV=2"])
+    #query_sequence = str(library["tr|W6S386|W6S386_9RHIZ Alcohol dehydrogenase zinc-binding domain protein OS=Rhizobium sp. LPU83 GN=adh1 PE=3 SV=1"])
+    #query_sequence = str(library["tr|A0A0E9DQE5|A0A0E9DQE5_CHLTH NADP-dependent alcohol dehydrogenase OS=Chlamydia trachomatis GN=adh_1 PE=3 SV=1"])
     library_sequence = str(library["tr|Q8K571|Q8K571_RAT ADH-like protein OS=Rattus norvegicus GN=Adh1 PE=2 SV=1"])
 
     aligned1, aligned2, score = align(library_sequence, query_sequence)
@@ -89,9 +91,9 @@ def test_rattus():
 
 def main():
     process_query()
-    print(get_performance())
     #test_simple()
     #test_rattus()
+    print(get_performance())
 
 if __name__ == "__main__":
     main()

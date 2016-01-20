@@ -23,17 +23,27 @@ best_diagonal_number = 10
 band_width = 8
 gap_penalty = -4
 
+def similarity_of(char1, char2):
+    if (char1, char2) in smatrix:
+        return smatrix[(char1, char2)]
+    else:
+        return smatrix[(char2, char1)]
 
+class Diagonal:
+    def __init__(self, index, sum):
+        self.index = index
+        self.sum = sum
+        self.score = 0
 '''
 # Represents a diagonal run in a dot plot: a short side diagonal
 # with a length not less than @ktup
 '''
 class Region:
-    def __init__(self, x, y, length):
+    def __init__(self, x, y, length, score=0):
         self.x = x
         self.y = y
         self.length = length
-        self.score = 0
+        self.score = score
         self.image = ''
 
     def __str__(self):
@@ -63,14 +73,16 @@ class Region:
 # 'h' -> [0], etc
 '''
 
-def get_lookup_table_for(seq):
+def get_lookup_table_for(seq, ktup):
     lookup_table = {}
 
-    for char in seq:
-        lookup_table[char] = []
+    for i in range(0, len(seq) - ktup + 1):
+        word = seq[i : i + ktup]
 
-    for i in range(len(seq)):
-        lookup_table[seq[i]].append(i)
+        if word not in lookup_table:
+            lookup_table[word] = []
+
+        lookup_table[word].append(i)
 
     return lookup_table
 
@@ -93,88 +105,120 @@ def align(db_seq, query_seq):
 
     n, m = len(db_seq), len(query_seq)
 
+    #
     # Create a lookup table
-    db_lookup_table = get_lookup_table_for(db_seq)
-
-    # Build a dot plot
+    #
     t1 = time.perf_counter()
 
-    dot_plot = np.zeros(shape=(n,m), dtype=np.int)
-    for j in range(m):
-        char = query_seq[j]
-        if char in db_lookup_table:
-            for i in db_lookup_table[char]:
-                dot_plot[i, j] = 1
+    lookup_table = get_lookup_table_for(seq=db_seq, ktup=ktup)
+
+    diagonal_sums = {}
+    for i in range(0, m-ktup+1):
+        diagonal_sums[i] = 0
+    for j in range(0, n-ktup+1):
+        diagonal_sums[-j] = 0
+
+    for i in range(0, m-ktup+1):
+        word = query_seq[i : i + ktup]
+        if word not in lookup_table:
+            continue
+        for j in lookup_table[word]:
+            diagonal_sums[i-j] += 1
 
     dotplot_time += time.perf_counter() - t1
 
     #
-    # Finding diagonal regions
+    # Finding diagonal runs
     # (all diagonal subsequences with length equal to or greater than ktup)
     #
     t1 = time.perf_counter()
-    regions = []
 
-    for k in range(-n + 1, m):
-        diagonal = dot_plot.diagonal(k)
-        inside = False
-
-        for i in range(len(diagonal)):
-            x, y = (i, i + k) if k >= 0 else (i - k, i)
-
-            if not inside and diagonal[i]:
-                inside = True
-                x_start, y_start = x, y
-                length = 1
-            elif inside and not diagonal[i]:
-                inside = False
-                if length >= ktup:
-                    regions.append(Region(x_start, y_start, length))
-            elif inside:
-                length += 1
-
-        if inside and length >= ktup:
-            regions.append(Region(x_start, y_start, length))
-
-    region_time += time.perf_counter() - t1
+    best_diagonals = []
+    for index in diagonal_sums:
+        best_diagonals.append(Diagonal(index, diagonal_sums[index]))
 
     #
-    # Calculate score for each region using similarity matrix
-    # Then sort by score and leave only top-10 regions
-    # FIXME: find formula from the first article and "(1, 3)"
+    # Sort and choose top-10 diagonals
     #
-    for region in regions:
-        region.image = db_seq[region.x : region.x + region.length]
-        region.score = sum([ smatrix[(x, x)] for x in region.image ])
-
-    regions.sort(key=lambda run: run.score, reverse=True)
-    regions = regions[:best_diagonal_number]
+    best_diagonals.sort(key=lambda d: d.sum, reverse=True)
+    best_diagonals = [x for x in best_diagonals if x.sum > 0][:best_diagonal_number]
 
     #
     # Rescore those top-10 using a scoring matrix that allows
     # conservative replacements and runs of identitites shorter than ktup
     # to contribute to the similarity score
     #
+    regions = []
+    for diagonal in best_diagonals:
+        frm = diagonal.index if diagonal.index > 0 else -diagonal.index
+        to = min(len(db_seq), len(query_seq))
+        first_i = last_i = None
+        length = 0
 
-    # For each of these best diagonal regions,
-    # a subregion with maximal score is identified
+        # Calculating score and trimming
+        for i in range(frm, to):
+            if diagonal.index < 0:
+                chr1 = query_seq[i+diagonal.index]
+                chr2 = db_seq[i]
+            else:
+                chr1 = query_seq[i]
+                chr2 = db_seq[i-diagonal.index]
+
+            similarity = similarity_of(chr1, chr2)
+            diagonal.score += similarity
+
+            if chr1 == chr2:
+                length += 1
+                last_i = i
+            if chr1 == chr2 and first_i == None and length >= ktup:
+                first_i = i
+            if chr1 != chr2 and length >= ktup:
+                last_i = i
+            if chr1 != chr2:
+                length = 0
+
+        if first_i == None or last_i == None:
+            continue
+
+        if length >= ktup:
+            last_i = i
+
+        x_start = min(m, first_i if diagonal.index > 0 else first_i - diagonal.index)
+        y_start = min(n, first_i if diagonal.index < 0 else first_i + diagonal.index)
+        length = last_i - first_i
+
+        new_region = Region(x_start, y_start, length, score=diagonal.score)
+        regions.append(new_region)
+
+    regions = [ x for x in regions if x.score > 0 ]
+    region_time += time.perf_counter() - t1
 
     #
     # Join regions if this will increase score
+    # http://www.srmuniv.ac.in/sites/default/files/files/2(6).pdf
     #
-    # FIXME FIXME http://www.srmuniv.ac.in/sites/default/files/files/2(6).pdf
+    # FASTA determines if any of the initial regions from different diagonals
+    # may be joined together to form an approximate alignment with gaps.
     #
-    # FastA determines if any of the initial regions from different diagonals may be joined together to form an approximate alignment with gaps.
     # Only non-overlapping regions may be joined.
     #
 
+
+
     # Perform dynamic programming for survivors
     t1 = time.perf_counter()
+
     if len(regions) != 0:
-        best_region = regions[0]
-        db_aligned, query_aligned, max_score = BoundedSmithWaterman(regions[:3], db_seq, query_seq)
+        x1 = min(regions, key=lambda reg: reg.x).x
+        y1 = min(regions, key=lambda reg: reg.y).y
+        x2 = max(regions, key=lambda reg: reg.x2).x2
+        y2 = max(regions, key=lambda reg: reg.y2).y2
+        best_region = Region(x1, y1, max(x2-x1, y2-y1))
+        # We should've updated the score... But we don't
+        db_aligned, query_aligned, max_score = BoundedSmithWaterman(best_region, db_seq, query_seq)
     else:
         db_aligned, query_aligned, max_score = '', '', 0
+
     align_time += time.perf_counter() - t1
 
     return db_aligned, query_aligned, max_score
@@ -186,31 +230,31 @@ class Direction(Enum):
     up   = 2
     end  = 3
 
-def BoundedSmithWaterman(regions, seq1, seq2):
+def BoundedSmithWaterman(region, seq1, seq2):
     n, m = len(seq1), len(seq2)
 
     # Find bounds first
-    i_min = min(regions, key=lambda reg: reg.x).x
-    j_min = min(regions, key=lambda reg: reg.y).y
-    i_max = max(regions, key=lambda reg: reg.x2).x2
-    j_max = max(regions, key=lambda reg: reg.y2).y2
-
-    i_min = max(i_min - band_width, 1)
-    i_max = min(i_max + band_width, n)
-    j_min = max(j_min - band_width, 1)
-    j_max = min(j_max + band_width, m)
-
-    left_diag = min(regions, key=lambda reg: reg.diag).diag - band_width
-    right_diag = max(regions, key=lambda reg: reg.diag).diag + band_width
-
-
-    # i_min = max(1, region.x  - band_width)
-    # i_max = min(n, region.x2 + band_width)
-    # j_min = max(1, region.y  - band_width)
-    # j_max = min(m, region.y2 + band_width)
+    # i_min = min(regions, key=lambda reg: reg.x).x
+    # j_min = min(regions, key=lambda reg: reg.y).y
+    # i_max = max(regions, key=lambda reg: reg.x2).x2
+    # j_max = max(regions, key=lambda reg: reg.y2).y2
     #
-    # left_diag  = region.diag - band_width
-    # right_diag = region.diag + band_width
+    # i_min = max(i_min - band_width, 1)
+    # i_max = min(i_max + band_width, n)
+    # j_min = max(j_min - band_width, 1)
+    # j_max = min(j_max + band_width, m)
+    #
+    # left_diag = min(regions, key=lambda reg: reg.diag).diag - band_width
+    # right_diag = max(regions, key=lambda reg: reg.diag).diag + band_width
+
+    # For single region:
+    i_min = max(1, region.x  - band_width)
+    i_max = min(n, region.x2 + band_width)
+    j_min = max(1, region.y  - band_width)
+    j_max = min(m, region.y2 + band_width)
+
+    left_diag  = region.diag - band_width
+    right_diag = region.diag + band_width
 
     # Now initialize score and traceback matrices
     max_score = 0
@@ -227,10 +271,7 @@ def BoundedSmithWaterman(regions, seq1, seq2):
             if not (current_diag > left_diag and current_diag < right_diag):
                 continue
 
-            pair = (seq2[j], seq1[i])
-            pair = pair if pair in smatrix else (seq1[i], seq2[j])
-
-            match  = scores[i-1][j-1] + smatrix[pair]
+            match  = scores[i-1][j-1] + similarity_of(seq1[i], seq2[j])
             insert = scores[i-1][j] + gap_penalty
             delete = scores[i][j-1] + gap_penalty
             scores[i][j] = max(match, delete, insert, 0)
