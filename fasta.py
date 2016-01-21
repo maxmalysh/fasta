@@ -228,6 +228,7 @@ class Direction(Enum):
 
 def BoundedSmithWaterman(region, seq1, seq2):
     n, m = len(seq1), len(seq2)
+    i_start, j_start = None, None
 
     # Find bounds first
     # i_min = min(regions, key=lambda reg: reg.x).x
@@ -287,7 +288,10 @@ def BoundedSmithWaterman(region, seq1, seq2):
     aligned1 = ''
     aligned2 = ''
 
+    # Something gone wrong - probably invalid region was supplied
     i, j = i_start, j_start
+    if i_start == None or j_start == None:
+        raise ValueError()
 
     while trace[(i, j)] != Direction.end:
         direction = trace[(i, j)]
